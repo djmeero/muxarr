@@ -7,6 +7,7 @@ using Muxarr.Data;
 using Muxarr.Data.Entities;
 using Muxarr.Data.Extensions;
 using Muxarr.Web.Authentication;
+using Muxarr.Web.Helpers;
 
 namespace Muxarr.Web.Controllers;
 
@@ -50,6 +51,9 @@ public class StatsController(IDbContextFactory<AppDbContext> contextFactory) : C
 
         return Ok(new StatsResponse
         {
+            // Application
+            AppVersion = AppInfo.Version,
+
             // Library (from cache)
             TotalFiles = stats?.TotalFiles ?? 0,
             TotalSizeBytes = stats?.TotalSizeBytes ?? 0,

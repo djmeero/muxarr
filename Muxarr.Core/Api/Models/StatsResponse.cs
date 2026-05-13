@@ -2,6 +2,9 @@ namespace Muxarr.Core.Api.Models;
 
 public class StatsResponse
 {
+    // Application
+    public string AppVersion { get; set; } = string.Empty;
+
     // Library
     public int TotalFiles { get; set; }
     public long TotalSizeBytes { get; set; }
@@ -33,6 +36,7 @@ public class StatsResponse
 
     public static StatsResponse Example => new()
     {
+        AppVersion = "0.8.1",
         TotalFiles = 1234,
         TotalSizeBytes = 5497558138880,
         TotalDurationMs = 4320000000,
