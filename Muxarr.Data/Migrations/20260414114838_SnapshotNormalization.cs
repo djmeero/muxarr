@@ -126,13 +126,15 @@ namespace Muxarr.Data.Migrations
 
                 -- Historical before/after snapshots per conversion, reconstructed
                 -- from the old JSON columns so the Conversions page still renders
-                -- what each conversion saw.
+                -- what each conversion saw. json_valid guards keep a single corrupt
+                -- row from aborting the migration.
                 INSERT INTO MediaSnapshot
                     (_TempConvBeforeId, CapturedAt, DurationMs, VideoBitDepth,
                      TrackCount, HasChapters, HasAttachments, HasFaststart)
                 SELECT Id, CreatedDate, 0, 0, 0, 0, 0, 0
                 FROM MediaConversion
-                WHERE TracksBefore IS NOT NULL AND TracksBefore != '' AND TracksBefore != '[]';
+                WHERE TracksBefore IS NOT NULL AND TracksBefore != '' AND TracksBefore != '[]'
+                  AND json_valid(TracksBefore) AND json_type(TracksBefore) = 'array';
 
                 UPDATE MediaConversion SET BeforeSnapshotId = (
                     SELECT Id FROM MediaSnapshot WHERE _TempConvBeforeId = MediaConversion.Id
@@ -143,7 +145,8 @@ namespace Muxarr.Data.Migrations
                      TrackCount, HasChapters, HasAttachments, HasFaststart)
                 SELECT Id, UpdatedDate, 0, 0, 0, 0, 0, 0
                 FROM MediaConversion
-                WHERE TracksAfter IS NOT NULL AND TracksAfter != '' AND TracksAfter != '[]';
+                WHERE TracksAfter IS NOT NULL AND TracksAfter != '' AND TracksAfter != '[]'
+                  AND json_valid(TracksAfter) AND json_type(TracksAfter) = 'array';
 
                 UPDATE MediaConversion SET AfterSnapshotId = (
                     SELECT Id FROM MediaSnapshot WHERE _TempConvAfterId = MediaConversion.Id
@@ -200,6 +203,41 @@ namespace Muxarr.Data.Migrations
                 UPDATE MediaSnapshot SET TrackCount = (
                     SELECT COUNT(*) FROM TrackSnapshot WHERE SnapshotId = MediaSnapshot.Id
                 ) WHERE _TempConvBeforeId IS NOT NULL OR _TempConvAfterId IS NOT NULL;
+
+                -- Custom conversions trust ConversionPlan as user input, so
+                -- rehydrate it from AllowedTracks before that column gets dropped.
+                -- Non-custom queued plans rebuild from profile at runtime, no
+                -- backfill needed.
+                UPDATE MediaConversion
+                SET ConversionPlan = json_object(
+                    'Tracks', COALESCE(
+                        (SELECT json_group_array(json_object(
+                            'Index', COALESCE(CAST(json_extract(tr.value, '$.Id') AS INTEGER), 0),
+                            'Type', COALESCE(json_extract(tr.value, '$.Type'), 'Unknown'),
+                            'Name', json_extract(tr.value, '$.TrackName'),
+                            'LanguageCode', COALESCE(json_extract(tr.value, '$.LanguageCode'), ''),
+                            'IsDefault', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsDefault') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsForced', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsForced') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsHearingImpaired', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsHearingImpaired') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsVisualImpaired', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsVisualImpaired') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsCommentary', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsCommentary') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsOriginal', json(CASE WHEN COALESCE(CAST(json_extract(tr.value, '$.IsOriginal') AS INTEGER), 0) = 1 THEN 'true' ELSE 'false' END),
+                            'IsDub', json('false'),
+                            'NameLocked', json('true')
+                        )) FROM json_each(MediaConversion.AllowedTracks) tr),
+                        json('[]')
+                    ),
+                    'HasChapters', json('null'),
+                    'HasAttachments', json('null'),
+                    'Faststart', json('null')
+                )
+                WHERE IsCustomConversion = 1
+                  AND State IN ('New', 'Processing')
+                  AND AllowedTracks IS NOT NULL
+                  AND AllowedTracks != ''
+                  AND AllowedTracks != '[]'
+                  AND json_valid(AllowedTracks)
+                  AND json_type(AllowedTracks) = 'array';
 
                 ALTER TABLE MediaSnapshot DROP COLUMN _TempFileId;
                 ALTER TABLE MediaSnapshot DROP COLUMN _TempConvBeforeId;
