@@ -1,0 +1,79 @@
+using Muxarr.Core.Language;
+using Muxarr.Core.Models;
+using Muxarr.Core.MkvToolNix;
+
+namespace Muxarr.Core.Utilities;
+
+public static class ExternalSubtitleDetector
+{
+    // Extension -> codec name understood by SubtitleCodecExtensions.ParseSubtitleCodec.
+    private static readonly Dictionary<string, string> SubtitleExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".srt"] = "Srt",
+        [".ass"] = "Ass",
+        [".ssa"] = "Ass",
+        [".sup"] = "Pgs",
+        [".vtt"] = "WebVtt"
+    };
+
+    /// <summary>
+    /// Parses one sibling file against a video stem. Returns null when the file
+    /// is not a subtitle for this video (wrong stem or wrong extension).
+    /// </summary>
+    public static ExternalSubtitle? ParseFromFileName(string videoStem, string subtitleFileName)
+    {
+        var ext = System.IO.Path.GetExtension(subtitleFileName);
+        if (string.IsNullOrEmpty(ext) || !SubtitleExtensions.TryGetValue(ext, out var codec))
+        {
+            return null;
+        }
+
+        var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(subtitleFileName);
+
+        // Must be "<videoStem>" or "<videoStem>.<tokens>".
+        if (!nameNoExt.Equals(videoStem, StringComparison.OrdinalIgnoreCase)
+            && !nameNoExt.StartsWith(videoStem + ".", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var tokenPart = nameNoExt.Length > videoStem.Length
+            ? nameNoExt.Substring(videoStem.Length).Trim('.')
+            : string.Empty;
+        var tokens = tokenPart.Length == 0
+            ? Array.Empty<string>()
+            : tokenPart.Split('.', StringSplitOptions.RemoveEmptyEntries);
+
+        var sub = new ExternalSubtitle { Codec = codec };
+
+        foreach (var token in tokens)
+        {
+            if (token.Equals("forced", StringComparison.OrdinalIgnoreCase))
+            {
+                sub.IsForced = true;
+                continue;
+            }
+
+            if (token.Equals("sdh", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hi", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cc", StringComparison.OrdinalIgnoreCase))
+            {
+                sub.IsHearingImpaired = true;
+                continue;
+            }
+
+            // First token that resolves to a known language wins.
+            if (sub.LanguageCode == "und")
+            {
+                var iso = IsoLanguage.Find(token);
+                if (iso != IsoLanguage.Unknown && iso.ThreeLetterCode is { } code)
+                {
+                    sub.LanguageCode = code;
+                    sub.LanguageName = iso.Name;
+                }
+            }
+        }
+
+        return sub;
+    }
+}
