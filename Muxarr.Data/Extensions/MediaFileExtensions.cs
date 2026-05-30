@@ -930,6 +930,15 @@ public static class MediaFileExtensions
             return;
         }
 
+        // Undetermined-language resolution must consider every subtitle track in
+        // the output (internal kept + external), not just the external survivors,
+        // so the "single und track" heuristic does not mis-fire.
+        var totalSubtitleTracks = keptInternal.GetSubtitleTracks().Count + kept.Count;
+
+        // Synthetic indices continue after the highest container track index so
+        // they never collide. Safe because Snapshot.Tracks holds only
+        // actually-included tracks (mkvmerge IDs are compact 0-based), and this
+        // path is Matroska-only.
         var nextIndex = file.Snapshot.Tracks.Count == 0
             ? 0
             : file.Snapshot.Tracks.Max(t => t.Index) + 1;
@@ -937,7 +946,7 @@ public static class MediaFileExtensions
         foreach (var external in kept)
         {
             var snapshot = external.ToSnapshot();
-            snapshot.ApplyTrackMutations(profile.SubtitleSettings, kept.Count, file.OriginalLanguage,
+            snapshot.ApplyTrackMutations(profile.SubtitleSettings, totalSubtitleTracks, file.OriginalLanguage,
                 profile.SubtitleSettings.StandardizeTrackNames);
 
             var plan = snapshot.ToTargetTrack(nameLocked: false);

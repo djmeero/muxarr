@@ -63,7 +63,7 @@ public class ExternalSubtitleImportTests
         Assert.AreEqual(1, external.Count);
         Assert.AreEqual("/media/Elemental.eng.srt", external[0].SourcePath);
         Assert.AreEqual("eng", external[0].LanguageCode);
-        Assert.IsTrue(external[0].Index > 0, "external track gets a synthetic index after container tracks");
+        Assert.AreEqual(1, external[0].Index, "external track gets a synthetic index after container tracks");
     }
 
     [TestMethod]
@@ -129,5 +129,35 @@ public class ExternalSubtitleImportTests
         var target = file.BuildTargetFromProfile(EnglishOnlyProfile(import: true));
 
         Assert.AreEqual(0, target.Tracks.Count(t => t.SourcePath != null));
+    }
+
+    [TestMethod]
+    public void Import_RespectsPerLanguageMaxTracksLimit()
+    {
+        var file = MkvFileWith(
+            new List<TrackSnapshot> { Video() },
+            new List<ExternalSubtitle>
+            {
+                new() { Path = "/media/Elemental.en.srt", LanguageCode = "eng", LanguageName = "English", Codec = "Srt" },
+                new() { Path = "/media/Elemental.eng.srt", LanguageCode = "eng", LanguageName = "English", Codec = "Srt" }
+            });
+
+        var profile = new Profile
+        {
+            ImportExternalSubtitles = true,
+            SubtitleSettings = new TrackSettings
+            {
+                Enabled = true,
+                AllowedLanguages = new List<LanguagePreference>
+                {
+                    new() { Language = IsoLanguage.Find("eng"), MaxTracks = 1 }
+                }
+            }
+        };
+
+        var target = file.BuildTargetFromProfile(profile);
+
+        Assert.AreEqual(1, target.Tracks.Count(t => t.SourcePath != null),
+            "two same-language external subs should be capped to MaxTracks=1");
     }
 }
