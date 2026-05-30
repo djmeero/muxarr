@@ -20,15 +20,16 @@ public static class ExternalSubtitleDetector
     /// Parses one sibling file against a video stem. Returns null when the file
     /// is not a subtitle for this video (wrong stem or wrong extension).
     /// </summary>
+    /// <remarks>Stem matching is prefix-based ("&lt;videoStem&gt;" or "&lt;videoStem&gt;.&lt;tokens&gt;"); callers (see Detect) pass only sibling files from the same directory as the video.</remarks>
     public static ExternalSubtitle? ParseFromFileName(string videoStem, string subtitleFileName)
     {
-        var ext = System.IO.Path.GetExtension(subtitleFileName);
+        var ext = Path.GetExtension(subtitleFileName);
         if (string.IsNullOrEmpty(ext) || !SubtitleExtensions.TryGetValue(ext, out var codec))
         {
             return null;
         }
 
-        var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(subtitleFileName);
+        var nameNoExt = Path.GetFileNameWithoutExtension(subtitleFileName);
 
         // Must be "<videoStem>" or "<videoStem>.<tokens>".
         if (!nameNoExt.Equals(videoStem, StringComparison.OrdinalIgnoreCase)
@@ -62,6 +63,7 @@ public static class ExternalSubtitleDetector
                 continue;
             }
 
+            // Resolve language last so flag tokens (forced/sdh/hi/cc) are never reinterpreted as a language code.
             // First token that resolves to a known language wins.
             if (sub.LanguageCode == "und")
             {
