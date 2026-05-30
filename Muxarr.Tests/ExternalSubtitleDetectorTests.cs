@@ -40,6 +40,7 @@ public class ExternalSubtitleDetectorTests
     public void Parse_SdhToken_SetsHearingImpairedFlag()
     {
         var sub = ExternalSubtitleDetector.ParseFromFileName("Elemental", "Elemental.eng.sdh.srt");
+        Assert.IsNotNull(sub);
         Assert.IsTrue(sub!.IsHearingImpaired);
     }
 
@@ -56,6 +57,7 @@ public class ExternalSubtitleDetectorTests
     public void Parse_AssExtension_MapsCodec()
     {
         var sub = ExternalSubtitleDetector.ParseFromFileName("Elemental", "Elemental.eng.ass");
+        Assert.IsNotNull(sub);
         Assert.AreEqual("Ass", sub!.Codec);
     }
 
